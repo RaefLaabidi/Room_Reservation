@@ -1,0 +1,6 @@
+{
+  "name": "Test Teacher",
+  "email": "newteacher@university.edu",
+  "password": "mypassword",
+  "role": "TEACHER"
+}

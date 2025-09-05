@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* React Big Calendar styles */
+@import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+/* Custom styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Calendar customizations */
+.rbc-calendar {
+  @apply bg-white rounded-lg shadow-lg;
+}
+
+.rbc-event {
+  @apply bg-blue-500 border-blue-600 text-white rounded;
+}
+
+.rbc-event.rbc-selected {
+  @apply bg-blue-700 border-blue-800;
+}
+
+.rbc-toolbar {
+  @apply mb-4 p-4 bg-gray-50 rounded-lg;
+}
+
+.rbc-toolbar button {
+  @apply px-3 py-2 mx-1 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.rbc-toolbar button.rbc-active {
+  @apply bg-blue-500 text-white border-blue-500;
+}

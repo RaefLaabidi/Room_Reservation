@@ -1,0 +1,13 @@
+{
+  "weekStartDate": "2025-09-01",
+  "courses": [
+    {
+      "courseId": 1,
+      "priority": 1,
+      "studentCount": 25,
+      "preferredTimeStart": "09:00",
+      "preferredTimeEnd": "11:00",
+      "preferredDays": "1,3,5"
+    }
+  ]
+}
