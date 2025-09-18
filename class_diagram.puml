@@ -1,0 +1,204 @@
+@startuml
+!theme plain
+
+title Diagramme de Classes - Système de Gestion de Réservation de Salles
+
+' Configuration des couleurs et styles pour une meilleure lisibilité
+skinparam class {
+    BackgroundColor White
+    BorderColor Black
+    FontSize 11
+    AttributeFontSize 10
+    MethodFontSize 10
+    HeaderBackgroundColor #E1F5FE
+}
+
+skinparam enum {
+    BackgroundColor #FFF3E0
+    BorderColor #FF9800
+    FontSize 10
+}
+
+skinparam note {
+    BackgroundColor #F1F8E9
+    BorderColor #4CAF50
+    FontSize 9
+}
+
+skinparam arrow {
+    Color Black
+    FontSize 10
+}
+
+' ==================== ENTITÉS PRINCIPALES ====================
+
+class User {
+    - id: Long
+    - name: String
+    - email: String
+    - password: String
+    - role: Role
+    - isActive: boolean
+    --
+    + authenticate(): boolean
+    + hasRole(role: Role): boolean
+    + canCreateReservation(): boolean
+}
+
+enum Role {
+    ADMIN
+    TEACHER
+    STUDENT
+}
+
+class Room {
+    - id: Long
+    - name: String
+    - capacity: Integer
+    - location: String
+    - equipment: List<String>
+    - isAvailable: boolean
+    --
+    + isAvailableAt(date: LocalDate, time: LocalTime): boolean
+    + getCapacity(): Integer
+}
+
+class Event {
+    - id: Long
+    - title: String
+    - type: EventType
+    - date: LocalDate
+    - startTime: LocalTime
+    - endTime: LocalTime
+    - status: EventStatus
+    --
+    + isConflictWith(other: Event): boolean
+    + getDuration(): Duration
+    + cancel(): void
+}
+
+enum EventType {
+    COURSE
+    DEFENSE
+    MEETING
+    EXAM
+}
+
+enum EventStatus {
+    PLANNED
+    CONFIRMED
+    CANCELLED
+    COMPLETED
+}
+
+class Course {
+    - id: Long
+    - name: String
+    - code: String
+    - credits: Integer
+    - semester: String
+    --
+    + getScheduledEvents(): List<Event>
+    + calculateTotalHours(): Integer
+}
+
+class Availability {
+    - id: Long
+    - dayOfWeek: DayOfWeek
+    - startTime: LocalTime
+    - endTime: LocalTime
+    - isRecurring: boolean
+    --
+    + isAvailableAt(date: LocalDate, time: LocalTime): boolean
+    + overlaps(other: Availability): boolean
+}
+
+class Conflict {
+    - id: Long
+    - type: ConflictType
+    - description: String
+    - severity: ConflictSeverity
+    - resolved: boolean
+    --
+    + resolve(solution: String): void
+    + getInvolvedEvents(): List<Event>
+}
+
+enum ConflictType {
+    ROOM_DOUBLE_BOOKING
+    TEACHER_UNAVAILABLE
+    TIME_OVERLAP
+}
+
+enum ConflictSeverity {
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
+}
+
+' ==================== RELATIONS AVEC CARDINALITÉS ====================
+
+' Relations User (1 User - N Events/Availabilities)
+User ||--|| Role : "1..1"
+User ||--o{ Event : "1..*" 
+User ||--o{ Availability : "1..*"
+User }o--o{ Course : "0..*"
+
+' Relations Event (N Events - 1 Room, 1 Teacher, 0..1 Course)
+Event }o--|| Room : "0..*"
+Event }o--|| User : "0..*"
+Event }o--o| Course : "0..1"
+Event ||--o{ Conflict : "1..*"
+
+' Relations Room (1 Room - N Events)
+Room ||--o{ Event : "1..*"
+
+' Relations Course (1 Course - N Events)
+Course ||--o{ Event : "1..*"
+
+' Relations Availability (N Availabilities - 1 User)
+Availability }o--|| User : "0..*"
+
+' Relations Conflict (N Conflicts - N Events)
+Conflict }o--o{ Event : "1..*"
+
+' Relations avec les énumérations
+User ||--|| Role
+Event ||--|| EventType
+Event ||--|| EventStatus
+Conflict ||--|| ConflictType
+Conflict ||--|| ConflictSeverity
+
+' ==================== NOTES EXPLICATIVES ====================
+
+note top of User
+  <b><color:red>Règles d'autorisation</color></b>
+  • <b>ADMIN :</b> Créent toutes les réservations
+  • <b>TEACHER :</b> Gèrent leurs disponibilités
+  • <b>STUDENT :</b> Consultent les plannings
+end note
+
+note right of Event
+  <b><color:blue>Gestion des événements</color></b>
+  • Cours réguliers et ponctuels
+  • Soutenances et examens
+  • Réunions administratives
+  • Détection automatique des conflits
+end note
+
+note bottom of Conflict
+  <b><color:orange>Système de conflits</color></b>
+  • Détection automatique en temps réel
+  • Classification par type et sévérité
+  • Résolution manuelle ou automatique
+end note
+
+note left of Room
+  <b><color:green>Gestion des salles</color></b>
+  • Capacité et localisation
+  • Équipements disponibles
+  • Vérification de disponibilité
+end note
+
+@enduml

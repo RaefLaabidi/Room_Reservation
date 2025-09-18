@@ -39,6 +39,15 @@ public interface EventRepository extends JpaRepository<Event, Long> {
                                      @Param("startTime") LocalTime startTime,
                                      @Param("endTime") LocalTime endTime);
     
+    @Query("SELECT e FROM Event e WHERE e.room = :room AND e.date = :date AND " +
+           "e.id != :excludeEventId AND " +
+           "((e.startTime < :endTime AND e.endTime > :startTime))")
+    List<Event> findConflictingEventsExcluding(@Param("room") Room room, 
+                                               @Param("date") LocalDate date,
+                                               @Param("startTime") LocalTime startTime,
+                                               @Param("endTime") LocalTime endTime,
+                                               @Param("excludeEventId") Long excludeEventId);
+    
     @Query("SELECT e FROM Event e WHERE e.teacher.id = :teacherId AND e.date BETWEEN :startDate AND :endDate")
     List<Event> findEventsByTeacherAndDateRange(@Param("teacherId") Long teacherId,
                                                @Param("startDate") LocalDate startDate,

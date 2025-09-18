@@ -23,24 +23,21 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class ConflictDetectionService {
 
     private final ConflictRepository conflictRepository;
     private final EventRepository eventRepository;
     private final EntityManager entityManager;
 
+    @Transactional
     public List<ConflictResponse> detectAndSaveAllConflicts() {
         try {
             System.out.println("=== STARTING CONFLICT DETECTION ===");
             
-            // Use native SQL to completely clear conflicts table
-            entityManager.createNativeQuery("TRUNCATE TABLE conflicts RESTART IDENTITY CASCADE").executeUpdate();
-            entityManager.flush();
-            entityManager.clear();
+            // Clear existing conflicts to avoid duplicates
+            System.out.println("Clearing existing conflicts...");
+            conflictRepository.deleteAll();
             
-            System.out.println("Cleared all existing conflicts with TRUNCATE");
-
             List<Event> allEvents = eventRepository.findAll();
             System.out.println("Found " + allEvents.size() + " events to analyze");
             
@@ -55,7 +52,7 @@ public class ConflictDetectionService {
                     
                     // Check if events are on the same date
                     if (!event1.getDate().equals(event2.getDate())) {
-                        System.out.println("  Different dates - no conflict");
+                        System.out.println("  Different dates: " + event1.getDate() + " vs " + event2.getDate());
                         continue;
                     }
                     
@@ -64,6 +61,10 @@ public class ConflictDetectionService {
                             event1.getStartTime(), event1.getEndTime(),
                             event2.getStartTime(), event2.getEndTime()
                     );
+                    
+                    System.out.println("  Event1: " + event1.getStartTime() + "-" + event1.getEndTime());
+                    System.out.println("  Event2: " + event2.getStartTime() + "-" + event2.getEndTime());
+                    System.out.println("  Times overlap: " + timesOverlap);
                     
                     if (!timesOverlap) {
                         System.out.println("  Times don't overlap - no conflict");
@@ -81,7 +82,10 @@ public class ConflictDetectionService {
 
                     // Room conflict
                     if (event1.getRoom() != null && event2.getRoom() != null && 
+                        event1.getRoom().getId() != null && event2.getRoom().getId() != null &&
                         event1.getRoom().getId().equals(event2.getRoom().getId())) {
+                        
+                        System.out.println("  ROOM CONFLICT DETECTED: Room " + event1.getRoom().getId() + " (" + event1.getRoom().getName() + ")");
                         
                         String roomDescription = String.format("Room '%s' double-booked: %s (%s) vs %s (%s) on %s from %s to %s",
                                 event1.getRoom().getName(),
@@ -95,24 +99,43 @@ public class ConflictDetectionService {
                                 getOverlapEnd(event1.getStartTime(), event1.getEndTime(), 
                                             event2.getStartTime(), event2.getEndTime()));
                         
-                        // Insert room conflict using native SQL
-                        String roomSql = "INSERT INTO conflicts (conflict_type, description, event1_id, event2_id) VALUES (?, ?, ?, ?)";
+                        // Create and save room conflict immediately with fresh entity references
                         try {
-                            entityManager.createNativeQuery(roomSql)
-                                .setParameter(1, "ROOM")
-                                .setParameter(2, roomDescription)
-                                .setParameter(3, event1.getId())
-                                .setParameter(4, event2.getId())
-                                .executeUpdate();
+                            Event freshEvent1 = eventRepository.findById(event1.getId()).orElse(null);
+                            Event freshEvent2 = eventRepository.findById(event2.getId()).orElse(null);
                             
-                            System.out.println("  SAVED ROOM CONFLICT: " + roomDescription);
+                            if (freshEvent1 != null && freshEvent2 != null) {
+                                Conflict roomConflict = Conflict.builder()
+                                    .conflictType(ConflictType.ROOM)
+                                    .description(roomDescription)
+                                    .event1(freshEvent1)
+                                    .event2(freshEvent2)
+                                    .build();
+                                
+                                Conflict saved = conflictRepository.save(roomConflict);
+                                
+                                // Build response directly without lazy loading issues
+                                ConflictResponse response = ConflictResponse.builder()
+                                    .id(saved.getId())
+                                    .conflictType(ConflictType.ROOM)
+                                    .description(roomDescription)
+                                    .event1(mapEventToResponse(freshEvent1))
+                                    .event2(mapEventToResponse(freshEvent2))
+                                    .build();
+                                results.add(response);
+                                System.out.println("  SAVED ROOM CONFLICT: " + roomDescription);
+                            }
                         } catch (Exception e) {
-                            System.err.println("  Failed to save room conflict: " + e.getMessage());
+                            System.out.println("  ERROR saving room conflict: " + e.getMessage());
                         }
                     }
                     
                     // Teacher conflict  
-                    if (event1.getTeacher().getId().equals(event2.getTeacher().getId())) {
+                    if (event1.getTeacher() != null && event2.getTeacher() != null && 
+                        event1.getTeacher().getId() != null && event2.getTeacher().getId() != null &&
+                        event1.getTeacher().getId().equals(event2.getTeacher().getId())) {
+                        
+                        System.out.println("  TEACHER CONFLICT DETECTED: Teacher " + event1.getTeacher().getId() + " (" + event1.getTeacher().getName() + ")");
                         
                         String teacherDescription = String.format("Teacher '%s' double-booked: %s (%s) vs %s (%s) on %s from %s to %s",
                                 event1.getTeacher().getName(),
@@ -126,31 +149,38 @@ public class ConflictDetectionService {
                                 getOverlapEnd(event1.getStartTime(), event1.getEndTime(), 
                                             event2.getStartTime(), event2.getEndTime()));
                         
-                        // Insert teacher conflict using native SQL
-                        String teacherSql = "INSERT INTO conflicts (conflict_type, description, event1_id, event2_id) VALUES (?, ?, ?, ?)";
+                        // Create and save teacher conflict immediately with fresh entity references
                         try {
-                            entityManager.createNativeQuery(teacherSql)
-                                .setParameter(1, "TEACHER")
-                                .setParameter(2, teacherDescription)
-                                .setParameter(3, event1.getId())
-                                .setParameter(4, event2.getId())
-                                .executeUpdate();
+                            Event freshEvent1 = eventRepository.findById(event1.getId()).orElse(null);
+                            Event freshEvent2 = eventRepository.findById(event2.getId()).orElse(null);
                             
-                            System.out.println("  SAVED TEACHER CONFLICT: " + teacherDescription);
+                            if (freshEvent1 != null && freshEvent2 != null) {
+                                Conflict teacherConflict = Conflict.builder()
+                                    .conflictType(ConflictType.TEACHER)
+                                    .description(teacherDescription)
+                                    .event1(freshEvent1)
+                                    .event2(freshEvent2)
+                                    .build();
+                                
+                                Conflict saved = conflictRepository.save(teacherConflict);
+                                
+                                // Build response directly without lazy loading issues  
+                                ConflictResponse response = ConflictResponse.builder()
+                                    .id(saved.getId())
+                                    .conflictType(ConflictType.TEACHER)
+                                    .description(teacherDescription)
+                                    .event1(mapEventToResponse(freshEvent1))
+                                    .event2(mapEventToResponse(freshEvent2))
+                                    .build();
+                                results.add(response);
+                                System.out.println("  SAVED TEACHER CONFLICT: " + teacherDescription);
+                            }
                         } catch (Exception e) {
-                            System.err.println("  Failed to save teacher conflict: " + e.getMessage());
+                            System.out.println("  ERROR saving teacher conflict: " + e.getMessage());
                         }
                     }
                 }
             }
-            
-            entityManager.flush();
-
-            // Now get all saved conflicts and convert to responses
-            List<Conflict> savedConflicts = conflictRepository.findAll();
-            results = savedConflicts.stream()
-                    .map(this::mapToResponse)
-                    .collect(Collectors.toList());
 
             System.out.println("=== CONFLICT DETECTION COMPLETE: " + results.size() + " conflicts saved ===");
             return results;
@@ -161,17 +191,135 @@ public class ConflictDetectionService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<ConflictResponse> getAllConflicts() {
-        return conflictRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        try {
+            List<Conflict> conflicts = conflictRepository.findAll();
+            List<ConflictResponse> responses = new ArrayList<>();
+            
+            for (Conflict conflict : conflicts) {
+                try {
+                    // Manually fetch the events to avoid lazy loading issues
+                    Event event1 = conflict.getEvent1() != null ? 
+                        eventRepository.findById(conflict.getEvent1().getId()).orElse(null) : null;
+                    Event event2 = conflict.getEvent2() != null ? 
+                        eventRepository.findById(conflict.getEvent2().getId()).orElse(null) : null;
+                    
+                    if (event1 != null) {
+                        ConflictResponse response = ConflictResponse.builder()
+                            .id(conflict.getId())
+                            .conflictType(conflict.getConflictType())
+                            .description(conflict.getDescription())
+                            .event1(mapEventToResponse(event1))
+                            .event2(event2 != null ? mapEventToResponse(event2) : null)
+                            .build();
+                        
+                        responses.add(response);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error processing conflict " + conflict.getId() + ": " + e.getMessage());
+                }
+            }
+            
+            return responses;
+        } catch (Exception e) {
+            System.err.println("Error getting conflicts: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
     }
 
     @Transactional
     public void clearAllConflicts() {
         conflictRepository.deleteAll();
         entityManager.flush();
+    }
+    
+    // Non-transactional method for testing conflict detection logic
+    public List<ConflictResponse> testConflictDetection() {
+        try {
+            System.out.println("=== TESTING CONFLICT DETECTION (NO SAVE) ===");
+            
+            List<Event> allEvents = eventRepository.findAll();
+            System.out.println("Found " + allEvents.size() + " events to analyze");
+            
+            List<ConflictResponse> results = new ArrayList<>();
+
+            for (int i = 0; i < allEvents.size(); i++) {
+                for (int j = i + 1; j < allEvents.size(); j++) {
+                    Event event1 = allEvents.get(i);
+                    Event event2 = allEvents.get(j);
+
+                    System.out.println("Checking events " + event1.getId() + " (" + event1.getType() + ") and " + event2.getId() + " (" + event2.getType() + ")");
+                    
+                    // Check if events are on the same date
+                    if (!event1.getDate().equals(event2.getDate())) {
+                        System.out.println("  Different dates: " + event1.getDate() + " vs " + event2.getDate());
+                        continue;
+                    }
+                    
+                    // Check if times overlap
+                    boolean timesOverlap = timesOverlap(
+                            event1.getStartTime(), event1.getEndTime(),
+                            event2.getStartTime(), event2.getEndTime()
+                    );
+                    
+                    System.out.println("  Event1: " + event1.getStartTime() + "-" + event1.getEndTime());
+                    System.out.println("  Event2: " + event2.getStartTime() + "-" + event2.getEndTime());
+                    System.out.println("  Times overlap: " + timesOverlap);
+                    
+                    if (!timesOverlap) {
+                        System.out.println("  Times don't overlap - no conflict");
+                        continue;
+                    }
+                    
+                    System.out.println("  Times overlap!");
+
+                    // Room conflict
+                    if (event1.getRoom() != null && event2.getRoom() != null && 
+                        event1.getRoom().getId().equals(event2.getRoom().getId())) {
+                        
+                        System.out.println("  ROOM CONFLICT DETECTED: Room " + event1.getRoom().getId() + " (" + event1.getRoom().getName() + ")");
+                        
+                        ConflictResponse roomConflict = ConflictResponse.builder()
+                            .id(0L) // Test ID
+                            .conflictType(ConflictType.ROOM)
+                            .description("Room '" + event1.getRoom().getName() + "' double-booked: " + 
+                                       event1.getType() + " vs " + event2.getType() + " on " + event1.getDate())
+                            .event1(mapEventToResponse(event1))
+                            .event2(mapEventToResponse(event2))
+                            .build();
+                        
+                        results.add(roomConflict);
+                    }
+                    
+                    // Teacher conflict  
+                    if (event1.getTeacher() != null && event2.getTeacher() != null && 
+                        event1.getTeacher().getId().equals(event2.getTeacher().getId())) {
+                        
+                        System.out.println("  TEACHER CONFLICT DETECTED: Teacher " + event1.getTeacher().getId() + " (" + event1.getTeacher().getName() + ")");
+                        
+                        ConflictResponse teacherConflict = ConflictResponse.builder()
+                            .id(0L) // Test ID
+                            .conflictType(ConflictType.TEACHER)
+                            .description("Teacher '" + event1.getTeacher().getName() + "' double-booked: " + 
+                                       event1.getType() + " vs " + event2.getType() + " on " + event1.getDate())
+                            .event1(mapEventToResponse(event1))
+                            .event2(mapEventToResponse(event2))
+                            .build();
+                        
+                        results.add(teacherConflict);
+                    }
+                }
+            }
+
+            System.out.println("=== TEST COMPLETE: " + results.size() + " conflicts detected ===");
+            return results;
+        } catch (Exception e) {
+            System.err.println("Error in conflict detection test: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
     }
 
     public List<ConflictResponse> detectConflictsWithoutSaving() {
@@ -218,7 +366,8 @@ public class ConflictDetectionService {
                         }
                         
                         // Teacher conflict
-                        if (event3.getTeacher().getId().equals(event4.getTeacher().getId())) {
+                        if (event3.getTeacher() != null && event4.getTeacher() != null && 
+                            event3.getTeacher().getId().equals(event4.getTeacher().getId())) {
                             ConflictResponse teacherConflict = new ConflictResponse();
                             teacherConflict.setId(0L);
                             teacherConflict.setConflictType(ConflictType.TEACHER);

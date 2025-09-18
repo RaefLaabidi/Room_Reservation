@@ -45,12 +45,32 @@ public class AutoSchedulingService {
                 .sorted((a, b) -> Integer.compare(b.getPriority(), a.getPriority()))
                 .collect(Collectors.toList());
         
+        // 🔍 DEBUG: Log priority order
+        log.info("📊 PRIORITY ORDER DEBUG:");
+        for (int i = 0; i < sortedAssignments.size(); i++) {
+            TemplateCourseAssignment assignment = sortedAssignments.get(i);
+            log.info("  {}. {} (Priority: {}) - {}", 
+                    i + 1, 
+                    assignment.getCourse().getName(), 
+                    assignment.getPriority(),
+                    assignment.getCourse().getSubject());
+        }
+        
         for (TemplateCourseAssignment assignment : sortedAssignments) {
             try {
+                log.info("🔄 Processing: {} (Priority: {})", 
+                        assignment.getCourse().getName(), 
+                        assignment.getPriority());
+                        
                 ScheduledEvent event = scheduleAssignment(assignment, template, scheduledEvents);
                 if (event != null) {
                     scheduledEvents.add(event);
                     result.setScheduledCourses(result.getScheduledCourses() + 1);
+                    
+                    log.info("✅ SCHEDULED: {} at {} (Priority: {})", 
+                            assignment.getCourse().getName(),
+                            event.getStartDateTime(),
+                            assignment.getPriority());
                 } else {
                     conflicts.add(new SchedulingConflict(assignment, "No suitable time slot found"));
                     result.setFailedCourses(result.getFailedCourses() + 1);
@@ -379,6 +399,13 @@ public class AutoSchedulingService {
         
         // Bonus for priority-based scheduling (higher priority courses get better slots)
         score += assignment.getPriority() * 2;
+        
+        // 🔍 DEBUG: Log slot scoring
+        log.debug("🎯 Slot Score for {} (Priority {}): {} points at {}", 
+                assignment.getCourse().getName(),
+                assignment.getPriority(),
+                score,
+                slot.getStartDateTime().toLocalTime());
         
         return score;
     }

@@ -41,6 +41,16 @@ public class EnhancedWeeklyScheduleService {
                 .sorted((a, b) -> Integer.compare(b.getPriority(), a.getPriority()))
                 .collect(Collectors.toList());
         
+        // 🔍 DEBUG: Log priority order
+        log.info("📊 ENHANCED WEEKLY SCHEDULE - PRIORITY ORDER:");
+        for (int i = 0; i < sortedCourses.size(); i++) {
+            CourseScheduleRequest courseRequest = sortedCourses.get(i);
+            log.info("  {}. Course ID {} (Priority: {})", 
+                    i + 1, 
+                    courseRequest.getCourseId(), 
+                    courseRequest.getPriority());
+        }
+        
         for (CourseScheduleRequest courseRequest : sortedCourses) {
             try {
                 List<ScheduledCourseEvent> courseEvents = scheduleCourse(
@@ -213,6 +223,25 @@ public class EnhancedWeeklyScheduleService {
         
         // Sort by preference score
         availableSlots.sort((a, b) -> Integer.compare(b.getPreferenceScore(), a.getPreferenceScore()));
+        
+        // 🔍 DEBUG: Log day distribution and slot selection
+        log.info("🗓️ AVAILABLE SLOTS for Teacher {} ({} total):", teacher.getName(), availableSlots.size());
+        Map<String, Long> dayCount = availableSlots.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                    slot -> slot.getStartDateTime().getDayOfWeek().name(),
+                    java.util.stream.Collectors.counting()
+                ));
+        dayCount.forEach((day, count) -> 
+            log.info("  - {}: {} slots available", day, count));
+            
+        if (!availableSlots.isEmpty()) {
+            UniversityTimeSlot bestSlot = availableSlots.get(0);
+            log.info("🎯 BEST SLOT CHOSEN: {} {} at {} (Score: {})", 
+                    bestSlot.getStartDateTime().getDayOfWeek(),
+                    bestSlot.getPeriod(),
+                    bestSlot.getStartDateTime().toLocalTime(),
+                    bestSlot.getPreferenceScore());
+        }
         
         return availableSlots;
     }

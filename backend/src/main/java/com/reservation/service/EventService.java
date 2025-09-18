@@ -204,11 +204,8 @@ public class EventService {
             throw new RuntimeException("Teacher has a conflict at the requested time");
         }
 
-        List<Event> roomConflicts = eventRepository.findConflictingEvents(
-                event.getRoom(), request.getDate(), request.getStartTime(), request.getEndTime())
-                .stream()
-                .filter(e -> !e.getId().equals(eventId)) // Exclude the current event
-                .collect(Collectors.toList());
+        List<Event> roomConflicts = eventRepository.findConflictingEventsExcluding(
+                event.getRoom(), request.getDate(), request.getStartTime(), request.getEndTime(), eventId);
 
         if (!roomConflicts.isEmpty()) {
             throw new RuntimeException("Room is not available at the requested time");
@@ -313,6 +310,99 @@ public class EventService {
                 .preferredEndTime(request.getPreferredEndTime())
                 .reason(reason)
                 .build();
+    }
+
+    public EventResponse updateEvent(Long eventId, EventUpdateRequest request) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+
+        // Update fields only if they are provided in the request
+        if (request.getType() != null) {
+            event.setType(request.getType());
+        }
+        
+        if (request.getTitle() != null) {
+            event.setTitle(request.getTitle());
+        }
+        
+        if (request.getDescription() != null) {
+            event.setDescription(request.getDescription());
+        }
+        
+        if (request.getDate() != null) {
+            event.setDate(request.getDate());
+        }
+        
+        if (request.getStartTime() != null) {
+            event.setStartTime(request.getStartTime());
+        }
+        
+        if (request.getEndTime() != null) {
+            event.setEndTime(request.getEndTime());
+        }
+        
+        if (request.getStatus() != null) {
+            event.setStatus(request.getStatus());
+        }
+        
+        if (request.getExpectedParticipants() != null) {
+            event.setExpectedParticipants(request.getExpectedParticipants());
+        }
+        
+        // Update teacher if provided
+        if (request.getTeacherId() != null) {
+            User teacher = userRepository.findById(request.getTeacherId())
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+            event.setTeacher(teacher);
+        }
+        
+        // Update room if provided
+        if (request.getRoomId() != null) {
+            Room room = roomRepository.findById(request.getRoomId())
+                    .orElseThrow(() -> new RuntimeException("Room not found"));
+            event.setRoom(room);
+        }
+        
+        // If date/time or room/teacher changed, check for conflicts
+        if (request.getDate() != null || request.getStartTime() != null || 
+            request.getEndTime() != null || request.getTeacherId() != null || 
+            request.getRoomId() != null) {
+            
+            // Check teacher conflicts (excluding current event)
+            if (hasTeacherConflictExcluding(event.getTeacher(), event.getDate(), 
+                    event.getStartTime(), event.getEndTime(), eventId)) {
+                throw new RuntimeException("Teacher has a conflict at the requested time");
+            }
+            
+            // Check room conflicts (excluding current event)
+            List<Event> roomConflicts = eventRepository.findConflictingEventsExcluding(
+                    event.getRoom(), event.getDate(), event.getStartTime(), event.getEndTime(), eventId);
+            
+            if (!roomConflicts.isEmpty()) {
+                throw new RuntimeException("Room is not available at the requested time");
+            }
+            
+            // Check room capacity if participants specified
+            if (event.getExpectedParticipants() != null && 
+                event.getRoom().getCapacity() < event.getExpectedParticipants()) {
+                throw new RuntimeException("Room capacity is insufficient for expected participants");
+            }
+        }
+
+        Event savedEvent = eventRepository.save(event);
+        return mapToResponse(savedEvent);
+    }
+
+    private boolean hasTeacherConflictExcluding(User teacher, LocalDate date, 
+            LocalTime startTime, LocalTime endTime, Long excludeEventId) {
+        List<Event> teacherEvents = eventRepository.findByTeacher(teacher)
+                .stream()
+                .filter(event -> !event.getId().equals(excludeEventId)) // Exclude current event
+                .filter(event -> event.getDate().equals(date))
+                .filter(event -> timesOverlap(startTime, endTime, event.getStartTime(), event.getEndTime()))
+                .collect(Collectors.toList());
+
+        return !teacherEvents.isEmpty();
     }
 
     @Transactional

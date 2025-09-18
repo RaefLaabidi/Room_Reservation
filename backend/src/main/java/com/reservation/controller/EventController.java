@@ -37,6 +37,22 @@ public class EventController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<EventResponse> updateEvent(
+            @PathVariable Long id, 
+            @Valid @RequestBody EventUpdateRequest request) {
+        try {
+            EventResponse response = eventService.updateEvent(id, request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            System.err.println("Update event failed: " + e.getMessage());
+            if (e.getMessage().contains("not found")) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
     @PostMapping("/generate")
     public ResponseEntity<ScheduleGenerationResponse> generateSchedule(
             @Valid @RequestBody ScheduleGenerationRequest request) {
